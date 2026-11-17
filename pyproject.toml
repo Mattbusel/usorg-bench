@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "usorg-bench"
+version = "0.1.0"
+description = "US organization matching benchmark labelled by government identifiers (UEI, SEC CIK, CMS CCN, FCC FRN, USAC BEN/SPIN, state filing numbers)"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Tensorust LLC" }]
+keywords = ["entity-resolution", "record-linkage", "benchmark", "organization-matching", "name-matching", "dataset"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Science/Research",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Database",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+]
+dependencies = ["rapidfuzz>=3.0"]
+
+[project.optional-dependencies]
+logicv2 = ["nomenklatura>=4.18"]
+splink = ["splink>=4.0", "pandas>=2.0"]
+test = ["pytest>=7", "hypothesis>=6", "scikit-learn>=1.2"]
+
+[project.urls]
+Homepage = "https://github.com/Mattbusel/usorg-bench"
+Dataset = "https://huggingface.co/datasets/tensorust/usorg-bench"
+Issues = "https://github.com/Mattbusel/usorg-bench/issues"
+
+[project.scripts]
+usorg-bench = "usorg_bench.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+usorg_bench = ["fixture/*.csv", "fixture/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

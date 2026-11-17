@@ -1,0 +1,55 @@
+{
+ "dataset": "tensorust/usorg-bench",
+ "revision": "v1.0",
+ "full": {
+  "pairs": 62497,
+  "records": 96642,
+  "entities": 71783
+ },
+ "fixture": {
+  "pairs": 5000,
+  "records": 9756
+ },
+ "full_sha256": {
+  "data/records.csv": "47e40a25643b4b9791db4721ae385243f67a501957fb19153bb6ef3858706ed0",
+  "data/pairs.csv": "b54ba266817e1cc625a6d8d286399c5e679f6a782ff7767fe18e96a7dc52c5a9"
+ },
+ "build": {
+  "records_loaded": 2533357,
+  "dropped_sole_proprietor_flag": 37870,
+  "dropped_person_like_name": 20809,
+  "records_after_dedupe": 413695,
+  "positive_candidates": 36966,
+  "negative_candidates": 206687,
+  "dropped_pair_dba_other_state": 7573,
+  "dropped_pair_dba_is_another_company": 668,
+  "dropped_pair_frn_positive_not_close": 5955,
+  "dropped_pair_near_same_name_same_state": 5457,
+  "dropped_pair_near_same_company_name_other_state": 5280,
+  "dropped_pair_registry_successor": 7037,
+  "pairs_candidates": 211683,
+  "stratum_1_easy_available": 13177,
+  "stratum_1_easy_taken": 13177,
+  "stratum_1_medium_available": 5408,
+  "stratum_1_medium_taken": 5408,
+  "stratum_1_hard_available": 11606,
+  "stratum_1_hard_taken": 7748,
+  "stratum_0_hard_available": 60754,
+  "stratum_0_hard_taken": 12264,
+  "stratum_0_medium_available": 9448,
+  "stratum_0_medium_taken": 9448,
+  "stratum_0_easy_available": 111290,
+  "stratum_0_easy_taken": 15000,
+  "largest_component_entities": 67,
+  "pairs": 62497,
+  "records": 96642,
+  "entities": 71783,
+  "release_names_status_suffix_removed": 32,
+  "release_dropped_registry_same_name_same_city": 146,
+  "release_dropped_uei_same_company_name_other_state": 178,
+  "release_dropped_uei_same_canonical_name_same_state": 37,
+  "release_dropped_frn_sister_licensees": 139,
+  "release_dropped_uei_site_word_only": 3,
+  "release_dropped_account_id_positive_form_conflict": 45
+ }
+}
