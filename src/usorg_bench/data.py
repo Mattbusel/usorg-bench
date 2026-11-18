@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from typing import IO, Dict, Iterator, List, Optional, Sequence, Tuple
 
 HF_REPO = "tensorust/usorg-bench"
-HF_REVISION = "v1.0"
+HF_REVISION = "v1.0.1"  # same rows as v1.0, plus per-split Parquet files
 HF_BASE = f"https://huggingface.co/datasets/{HF_REPO}/resolve/{HF_REVISION}"
 FULL_FILES = {"records": "data/records.csv", "pairs": "data/pairs.csv"}
 
@@ -29,6 +29,11 @@ SPLITS = ("train", "dev", "test")
 DIFFICULTIES = ("easy", "medium", "hard")
 CONFIDENCES = ("high", "medium", "low")
 _OPTIONAL = ("address", "city", "state", "zip5")
+
+# What a matcher may read for a leaderboard result. Everything else (source, id_type, entity_id,
+# name_kind and every pair column except the ids) describes how the benchmark was built and
+# predicts the label without reading the names; see docs/metrics.md.
+FEATURE_FIELDS = ("record_id", "name", "address", "city", "state", "zip5")
 
 
 @dataclass(frozen=True)
@@ -43,6 +48,17 @@ class Record:
     zip5: Optional[str]
     id_type: str
     entity_id: str
+
+
+@dataclass(frozen=True)
+class FeatureRecord:
+    """The fields of a record a leaderboard matcher may use (``record_id`` is an opaque key)."""
+    record_id: str
+    name: str
+    address: Optional[str]
+    city: Optional[str]
+    state: Optional[str]
+    zip5: Optional[str]
 
 
 @dataclass(frozen=True)
@@ -89,10 +105,23 @@ class BenchmarkData:
         return self.records[pair.left_id], self.records[pair.right_id]
 
     def iter_named_pairs(self) -> Iterator[Tuple[Pair, Record, Record]]:
-        """Yield ``(pair, left_record, right_record)``."""
+        """Yield ``(pair, left_record, right_record)`` with every column, labels included.
+
+        For scoring use :meth:`iter_feature_pairs`, which hides the columns that give the label away.
+        """
         for p in self.pairs:
             left, right = self.pair_records(p)
             yield p, left, right
+
+    def features(self, record_id: str) -> FeatureRecord:
+        """The leaderboard-allowed view of one record (see ``FEATURE_FIELDS``)."""
+        r = self.records[record_id]
+        return FeatureRecord(r.record_id, r.name, r.address, r.city, r.state, r.zip5)
+
+    def iter_feature_pairs(self) -> Iterator[Tuple[str, FeatureRecord, FeatureRecord]]:
+        """Yield ``(pair_id, left, right)`` with only the fields a leaderboard matcher may read."""
+        for p in self.pairs:
+            yield p.pair_id, self.features(p.left_id), self.features(p.right_id)
 
 
 def _none(v: Optional[str]) -> Optional[str]:
@@ -223,6 +252,8 @@ def read_scores(fh: IO[str]) -> Dict[str, float]:
     Rejects empty or duplicate ids and scores that are not finite numbers within [0, 1].
     """
     reader = csv.DictReader(fh)
+    if reader.fieldnames and reader.fieldnames[0].startswith("﻿"):  # Excel and utf-8-sig writers
+        reader.fieldnames = [reader.fieldnames[0][1:]] + list(reader.fieldnames[1:])
     if not reader.fieldnames or "pair_id" not in reader.fieldnames or "score" not in reader.fieldnames:
         raise ValueError("scores file needs 'pair_id' and 'score' columns")
     out: Dict[str, float] = {}

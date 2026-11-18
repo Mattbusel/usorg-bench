@@ -1,8 +1,10 @@
 """Turn a build_bench.py output directory into the published layout.
 
 Usage: python package_release.py BUILD_DIR RELEASE_DIR REPO_DIR
+       python package_release.py --split-files RELEASE_DIR   (only rewrite the per-split Parquet files)
 
-RELEASE_DIR receives what goes to Hugging Face (data/records.*, data/pairs.*, fixture/).
+RELEASE_DIR receives what goes to Hugging Face (data/records.*, data/pairs.*, the per-split
+Parquet files the dataset card maps to train / validation / test, and fixture/).
 REPO_DIR/src/usorg_bench/fixture receives the 5,000-pair fixture and manifest.json (with the
 SHA-256 of the full CSV files so ``usorg_bench.load("full")`` can verify its download).
 """
@@ -23,6 +25,7 @@ PAIR_COLS = ["pair_id", "left_id", "right_id", "label", "id_type", "label_confid
              "name_sim", "split"]
 FIXTURE_PAIRS = 5000
 SEED = 20261117
+REVISION = "v1.0.1"
 
 
 STATUS_SUFFIX = re.compile(r",\s*(?:Dissolved|Delinquent|Colorado Authority|Withdrawn|Converted|Merged|Expired|"
@@ -119,6 +122,33 @@ def write(df, cols, path_csv, path_parquet=None):
         df.to_parquet(path_parquet, index=False)
 
 
+HF_SPLITS = {"train": "train", "dev": "validation", "test": "test"}
+
+
+def write_split_files(rec, pairs, out_dir):
+    """data/pairs-{train,dev,test}.parquet and records-{...}.parquet (records of a split are the
+    ones its pairs reference; splits are entity-disjoint, so no record is in two splits)."""
+    os.makedirs(out_dir, exist_ok=True)
+    seen = set()
+    for split in HF_SPLITS:
+        ps = pairs[pairs.split == split].sort_values("pair_id")
+        used = set(ps.left_id) | set(ps.right_id)
+        assert not used & seen, "a record appears in two splits"
+        seen |= used
+        rs = rec[rec.record_id.isin(used)].sort_values("record_id")
+        ps[PAIR_COLS].to_parquet(os.path.join(out_dir, f"pairs-{split}.parquet"), index=False)
+        rs[RECORD_COLS].to_parquet(os.path.join(out_dir, f"records-{split}.parquet"), index=False)
+
+
+def split_files_only(release):
+    rec = pd.read_parquet(os.path.join(release, "data", "records.parquet"))
+    pairs = pd.read_parquet(os.path.join(release, "data", "pairs.parquet"))
+    write_split_files(rec, pairs, os.path.join(release, "data"))
+    fx_ids = set(pd.read_csv(os.path.join(release, "fixture", "pairs.csv"), usecols=["pair_id"]).pair_id)
+    fx = pairs[pairs.pair_id.isin(fx_ids)]
+    write_split_files(rec, fx, os.path.join(release, "fixture"))
+
+
 def fixture_sample(pairs):
     """5,000 pairs stratified by split x label x difficulty, kept entity-disjoint across splits
     because whole pairs are taken from the full set (whose splits already are)."""
@@ -135,6 +165,9 @@ def fixture_sample(pairs):
 
 
 def main():
+    if sys.argv[1] == "--split-files":
+        split_files_only(sys.argv[2])
+        return
     build, release, repo = sys.argv[1:4]
     rec = pd.read_parquet(os.path.join(build, "records.parquet"))
     pairs = pd.read_parquet(os.path.join(build, "pairs.parquet"))
@@ -146,6 +179,7 @@ def main():
     os.makedirs(os.path.join(release, "fixture"), exist_ok=True)
     write(rec, RECORD_COLS, os.path.join(release, "data", "records.csv"), os.path.join(release, "data", "records.parquet"))
     write(pairs, PAIR_COLS, os.path.join(release, "data", "pairs.csv"), os.path.join(release, "data", "pairs.parquet"))
+    write_split_files(rec, pairs, os.path.join(release, "data"))
 
     fx = fixture_sample(pairs)
     used = set(fx.left_id) | set(fx.right_id)
@@ -155,10 +189,11 @@ def main():
     for d in (fdir, os.path.join(release, "fixture")):
         write(fxr, RECORD_COLS, os.path.join(d, "records.csv"))
         write(fx, PAIR_COLS, os.path.join(d, "pairs.csv"))
+    write_split_files(rec, fx, os.path.join(release, "fixture"))
 
     manifest = {
         "dataset": "tensorust/usorg-bench",
-        "revision": "v1.0",
+        "revision": REVISION,
         "full": {"pairs": int(len(pairs)), "records": int(len(rec)), "entities": int(rec.entity_id.nunique())},
         "fixture": {"pairs": int(len(fx)), "records": int(len(fxr))},
         "full_sha256": {f"data/{n}.csv": sha(os.path.join(release, "data", f"{n}.csv")) for n in ("records", "pairs")},

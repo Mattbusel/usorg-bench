@@ -1,6 +1,8 @@
 # How the benchmark is built
 
-The scripts in `scripts/build/` rebuild the release from the public source files.
+The scripts in `scripts/build/` rebuild the release content from the public source files: the
+same records, the same pairs and labels. They do not reproduce the published ids or the
+train / dev / test assignment without the private key (see [Reproducing](#reproducing)).
 
 1. `extract_fpds.py OUT.parquet FY*_All_Contracts_Full_*.zip` reads the USAspending "All
    Contracts Full" downloads (FPDS prime transactions) and keeps one row per distinct recipient
@@ -8,8 +10,8 @@ The scripts in `scripts/build/` rebuild the release from the public source files
    FY2027 to date read 12,287,036 transactions into 195,849 distinct rows.
 2. `build_bench.py` loads every source listed in [format.md](format.md#sources), filters,
    generates pairs, assigns labels, confidence, strata and splits, and masks identifiers.
-3. `package_release.py` writes the CSV and Parquet files, draws the 5,000-pair fixture and
-   writes `manifest.json` with SHA-256 sums of the full files.
+3. `package_release.py` writes the CSV and Parquet files (also one Parquet file per split),
+   draws the 5,000-pair fixture and writes `manifest.json` with SHA-256 sums of the full files.
 
 The identifier mask is an HMAC-SHA256 keyed by `USORG_SALT`, which is not published. Without it
 nobody can map an `entity_id` back to a UEI or CIK, so a method cannot shortcut the benchmark by
@@ -76,8 +78,32 @@ status suffixes that the build regex missed (32 names).
 
 Pairs are sampled per (label, difficulty) stratum toward a 100,000-pair target. DBA aliases
 are capped at 25% and state-registry pairs at 45% of a stratum so one mechanism cannot dominate.
-Strata with fewer candidates than their quota are taken whole, which is why the release has
-fewer than 100,000 pairs.
+The release has fewer than 100,000 pairs for two reasons, both visible in `build_stats.json`:
+
+| stratum (label, difficulty) | quota | candidates | taken | why short |
+|---|---|---|---|---|
+| match, easy | 18,000 | 13,177 | 13,177 | not enough candidates |
+| match, medium | 16,000 | 5,408 | 5,408 | not enough candidates |
+| match, hard | 14,000 | 11,606 | 7,748 | 2,394 too few candidates, 3,858 stopped by the DBA cap or the duplicate check |
+| non-match, hard | 20,000 | 60,754 | 12,264 | 7,736 stopped by the DBA and state-registry caps or the duplicate check |
+| non-match, medium | 17,000 | 9,448 | 9,448 | not enough candidates |
+| non-match, easy | 15,000 | 111,290 | 15,000 | full |
+
+That is 63,045 pairs: 25,361 short of the target because strata ran out of candidates and
+11,594 because the caps (and a duplicate check on the same two names) stopped the hard strata.
+The release filters then drop 548 more, for 62,497. Relaxing the caps would add hard pairs, but
+they would be mostly DBA aliases and state-registry form collisions, the two mechanisms the caps
+exist to limit.
 
 Records joined by any pair form connected components; each component goes to `train` (50%),
 `dev` (10%) or `test` (40%) by a hash of its id. That keeps every identifier in one split.
+
+## Reproducing
+
+`record_id`, `pair_id` and `entity_id` are HMACs under `USORG_SALT`, and the split of a
+component is a hash of its masked `entity_id`, so all four depend on the private key. A rebuild
+with another key gives the same records, pairs and labels, but different ids and a different
+(equally random) train / dev / test assignment. To compare with published results, use the
+released files, whose `split` column is the reference assignment. The key stays private because
+it is what keeps `entity_id` from being reversed into a UEI or CIK by brute force over the public
+identifier lists.

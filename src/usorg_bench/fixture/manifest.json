@@ -1,6 +1,6 @@
 {
  "dataset": "tensorust/usorg-bench",
- "revision": "v1.0",
+ "revision": "v1.0.1",
  "full": {
   "pairs": 62497,
   "records": 96642,

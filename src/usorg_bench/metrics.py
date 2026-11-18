@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
 from .data import BenchmarkData, Pair
+from .normalize import simple_norm
 
 
 def confusion(labels: Sequence[int], scores: Sequence[float], threshold: float) -> Tuple[int, int, int, int]:
@@ -106,14 +107,30 @@ def _collect(data: BenchmarkData, scores: Mapping[str, float], missing: str) -> 
     return ps, ss
 
 
+BREAKDOWNS = ("difficulty", "id_type", "label_confidence", "categories", "identical_name")
+
+
+def _groups(data: BenchmarkData, p: Pair, field: str) -> Tuple[str, ...]:
+    """The groups a pair belongs to for one breakdown. ``categories`` is multi-valued (a pair is
+    counted under each of its tags, or ``none``); ``identical_name`` is ``yes`` when the two names
+    are equal after case and punctuation folding (in v1.0 every such pair is a non-match)."""
+    if field == "categories":
+        return p.categories or ("none",)
+    if field == "identical_name":
+        a, b = data.pair_records(p)
+        return ("yes" if simple_norm(a.name) == simple_norm(b.name) else "no",)
+    return (str(getattr(p, field)),)
+
+
 def evaluate(data: BenchmarkData, scores: Mapping[str, float], threshold: Optional[float] = None, *,
-             missing: str = "zero", by: Iterable[str] = ("difficulty", "id_type", "label_confidence")) -> dict:
+             missing: str = "zero", by: Iterable[str] = BREAKDOWNS) -> dict:
     """Score a submission against the pairs in ``data``.
 
     ``scores`` maps pair_id to a score in [0, 1]. Pairs without a score count as 0.0 by default
     (``missing="zero"``); ``"error"`` raises and ``"skip"`` leaves them out. When ``threshold`` is
     None the best-F1 threshold on these same pairs is used and reported as ``oracle_threshold``;
     for the leaderboard pick the threshold on the dev split and pass it in for test.
+    ``n_scored`` counts the pairs that had a score in ``scores``.
     """
     if missing not in ("zero", "error", "skip"):
         raise ValueError("missing must be 'zero', 'error' or 'skip'")
@@ -129,9 +146,10 @@ def evaluate(data: BenchmarkData, scores: Mapping[str, float], threshold: Option
     for field in by:
         groups: Dict[str, Tuple[List[int], List[float]]] = {}
         for p, s in zip(ps, ss):
-            g = groups.setdefault(str(getattr(p, field)), ([], []))
-            g[0].append(p.label)
-            g[1].append(s)
+            for key in _groups(data, p, field):
+                g = groups.setdefault(key, ([], []))
+                g[0].append(p.label)
+                g[1].append(s)
         out[f"by_{field}"] = {k: dict(prf(v[0], v[1], threshold), average_precision=average_precision(*v))
                               for k, v in sorted(groups.items())}
     return out

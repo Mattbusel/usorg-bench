@@ -19,11 +19,12 @@ def _data(args):
 
 
 def _summary(res: dict) -> str:
-    lines = [f"pairs {res['n_pairs']}  threshold {res['threshold']:.4f}"
-             f"{' (best F1 on these pairs)' if res.get('oracle_threshold') else ''}",
+    lines = [f"pairs {res['n_pairs']}  scored {res['n_scored']}  threshold {res['threshold']:.4f}"
+             f"{' (best F1 on these pairs, not a leaderboard number)' if res.get('oracle_threshold') else ''}"
+             f"{' (from dev)' if res.get('threshold_from') == 'dev' else ''}",
              f"precision {res['precision']:.4f}  recall {res['recall']:.4f}  F1 {res['f1']:.4f}  "
              f"AP {res['average_precision']:.4f}"]
-    for k in ("by_difficulty", "by_id_type", "by_label_confidence"):
+    for k in ("by_difficulty", "by_id_type", "by_label_confidence", "by_categories", "by_identical_name"):
         for g, m in res.get(k, {}).items():
             lines.append(f"  {k[3:]:>16} {g:<14} n={m['n']:<6} P={m['precision']:.3f} R={m['recall']:.3f} "
                          f"F1={m['f1']:.3f} acc={m['accuracy']:.3f}")
@@ -40,17 +41,40 @@ def cmd_info(args) -> int:
     return 0
 
 
+def _warn(msg: str) -> None:
+    print(f"usorg-bench: warning: {msg}", file=sys.stderr)
+
+
 def cmd_eval(args) -> int:
     d, conf = _data(args)
-    with open(args.scores, encoding="utf-8", newline="") as fh:
+    with open(args.scores, encoding="utf-8-sig", newline="") as fh:  # -sig: Excel writes a BOM
         scores = read_scores(fh)
-    thr = args.threshold
+    target = d.select(args.split, confidence=conf)
+    n_scored = sum(1 for p in target.pairs if p.pair_id in scores)
+    if target.pairs and n_scored == 0:
+        raise ValueError(f"no pair_id in {args.scores} belongs to the {args.split} split; "
+                         f"check that the file scores this dataset (--which / --data-dir)")
+    unknown = len(set(scores) - {p.pair_id for p in d.pairs})
+    if unknown:
+        _warn(f"{unknown} pair_ids in {args.scores} are not in this dataset and are ignored")
+    if n_scored < len(target.pairs):
+        _warn(f"{len(target.pairs) - n_scored} of {len(target.pairs)} {args.split} pairs have no score "
+              f"(--missing {args.missing})")
+    thr, thr_from = args.threshold, ("given" if args.threshold is not None else None)
     if thr is None and args.split == "test":
         dev = d.select("dev", confidence=conf)
-        ys = [p.label for p in dev.pairs]
-        ss = [scores.get(p.pair_id, 0.0) for p in dev.pairs]
-        thr, _ = best_threshold(ys, ss) if dev.pairs else (None, 0)
-    res = evaluate(d.select(args.split, confidence=conf), scores, thr, missing=args.missing)
+        dev_scored = [p for p in dev.pairs if p.pair_id in scores]
+        if not dev_scored:
+            raise ValueError("the scores file has no dev pairs, so no threshold can be chosen on dev; "
+                             "include dev scores or pass --threshold")
+        if len(dev_scored) < len(dev.pairs):
+            _warn(f"{len(dev.pairs) - len(dev_scored)} of {len(dev.pairs)} dev pairs have no score; "
+                  f"the threshold is chosen on the {len(dev_scored)} scored dev pairs")
+        thr, _ = best_threshold([p.label for p in dev_scored], [scores[p.pair_id] for p in dev_scored])
+        thr_from = "dev"
+    res = evaluate(target, scores, thr, missing=args.missing)
+    if thr_from:
+        res["threshold_from"] = thr_from
     print(json.dumps(res, indent=1) if args.json else _summary(res))
     return 0
 

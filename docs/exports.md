@@ -1,8 +1,15 @@
 # Exports for other entity-resolution tools
 
 `usorg-bench export FORMAT OUT_DIR` writes the benchmark in a format another tool already tests
-against. The released exports (built from the test split with `--max-entities 600`) are on
-Hugging Face under `exports/`.
+against. The released exports are on Hugging Face under `exports/`. Each one is reproduced byte
+for byte by:
+
+```
+usorg-bench export name_bench exports/name_bench --which full --split test                  # 300 rows (--n default)
+usorg-bench export senzing exports/senzing --which full --split test --max-entities 300     # 479 records, 300 clusters
+usorg-bench export zingg exports/zingg --which full --split test --max-entities 600         # 974 records, 200 training pairs
+usorg-bench export senzing exports/senzing_full --which full                                # 54,781 records, 40,967 clusters
+```
 
 ## nomenklatura name_bench (`name_bench`)
 
@@ -45,7 +52,7 @@ side drops a legal form or abbreviates a word: `MILPOWER, INC.` vs `MILPOWER` (0
 A truth set claims that records in different clusters are different entities, which pairwise
 labels do not need. The export therefore keeps one identifier type (UEI by default) and drops any
 cluster that shares a normalized name with another cluster, unless both are government names in
-different states. With `--max-entities`, half of the entity budget goes to pairs of entities that a labelled non-match connects, so a sample keeps its hard negatives. The released set (test split, `--max-entities 300`) has 479 records in 300 clusters, under the 500-record limit of Senzing's evaluation license; `exports/senzing_full`
+different states. With `--max-entities`, half of the entity budget goes to pairs of entities that a labelled non-match connects, so a sample keeps its hard negatives. The released set (`--split test --max-entities 300`) has 479 records in 300 clusters, under the 500-record limit of Senzing's evaluation license; `exports/senzing_full`
 applies the same rule to the whole benchmark (54,781 records in 40,967 clusters).
 
 Checked with Senzing SDK 4.4.4 (`senzing/senzingsdk-tools:4.4.4`, SQLite repository, default
@@ -62,8 +69,9 @@ true pairs found, 1 extra pair).
 * `config.json`: field definitions (`id` not used, `state` exact, the rest fuzzy), the data and
   training sources under `examples/us-orgs/`, model id 108.
 
-Same cluster rule as the Senzing export. `training.csv` holds 100 matches and 100 non-matches
-(Zingg refuses to train on one class).
+Same cluster rule as the Senzing export. The released example (`--split test --max-entities 600`)
+has 974 records, and its `training.csv` holds 100 matches and 100 non-matches (Zingg refuses to
+train on one class). Smaller `--max-entities` values give fewer training pairs.
 
 Checked with Zingg 0.7.0 on Spark 3.5.5 (`local[4]`, driver memory 4 GB): `--phase train` and
 `--phase match` both complete on the released example. Scored against the true grouping over

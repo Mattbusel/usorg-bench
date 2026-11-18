@@ -8,6 +8,9 @@
   the name, exact match on city, state and ZIP), u from random sampling and m by EM, scoring
   exactly the benchmark pairs.
 
+Every baseline reads records through ``BenchmarkData.iter_feature_pairs`` / ``features``, so it
+sees only the leaderboard-allowed fields (name, address, city, state, ZIP).
+
 rapidfuzz is a core dependency; nomenklatura and splink are optional extras
 (``pip install usorg-bench[logicv2]`` / ``[splink]``).
 """
@@ -15,18 +18,18 @@ from __future__ import annotations
 
 from typing import Callable, Dict
 
-from .data import BenchmarkData, Record
+from .data import BenchmarkData, FeatureRecord
 from .normalize import legal_form, simple_norm
 
 
 def rapidfuzz_scores(data: BenchmarkData) -> Dict[str, float]:
     from rapidfuzz import fuzz
 
-    return {p.pair_id: fuzz.token_sort_ratio(simple_norm(a.name), simple_norm(b.name)) / 100.0
-            for p, a, b in data.iter_named_pairs()}
+    return {pid: fuzz.token_sort_ratio(simple_norm(a.name), simple_norm(b.name)) / 100.0
+            for pid, a, b in data.iter_feature_pairs()}
 
 
-def _ftm_schema(a: Record, b: Record) -> str:
+def _ftm_schema(a: FeatureRecord, b: FeatureRecord) -> str:
     return "Company" if (legal_form(a.name) or legal_form(b.name)) else "Organization"
 
 
@@ -36,7 +39,7 @@ def _logicv2(data: BenchmarkData, with_address: bool) -> Dict[str, float]:
 
     config = LogicV2.default_config()
 
-    def entity(schema, r: Record, i: str):
+    def entity(schema, r: FeatureRecord, i: str):
         e = ValueEntity(model.get(schema), {"id": i})
         e.add("name", r.name)
         if with_address:
@@ -48,10 +51,10 @@ def _logicv2(data: BenchmarkData, with_address: bool) -> Dict[str, float]:
         return e
 
     out = {}
-    for p, a, b in data.iter_named_pairs():
+    for pid, a, b in data.iter_feature_pairs():
         schema = _ftm_schema(a, b)
-        res = LogicV2.compare(entity(schema, a, "l" + p.pair_id), entity(schema, b, "r" + p.pair_id), config)
-        out[p.pair_id] = min(1.0, max(0.0, float(res.score)))
+        res = LogicV2.compare(entity(schema, a, "l" + pid), entity(schema, b, "r" + pid), config)
+        out[pid] = min(1.0, max(0.0, float(res.score)))
     return out
 
 
@@ -71,7 +74,7 @@ def splink_scores(data: BenchmarkData, seed: int = 20261117) -> Dict[str, float]
     used = {rid for p in data.pairs for rid in (p.left_id, p.right_id)}
     rows = []
     for rid in sorted(used):
-        r = data.records[rid]
+        r = data.features(rid)
         rows.append({"unique_id": rid, "name": simple_norm(r.name) or None,
                      "city": simple_norm(r.city) if r.city else None, "state": r.state, "zip5": r.zip5})
     df = pd.DataFrame(rows)

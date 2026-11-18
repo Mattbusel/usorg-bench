@@ -1,4 +1,4 @@
-# USORG-Bench datasheet (v1.0)
+# USORG-Bench datasheet (v1.0, v1.0.1)
 
 Following the questions of *Datasheets for Datasets* (Gebru et al.).
 
@@ -12,12 +12,12 @@ It is built and maintained by Tensorust LLC.
 
 ## Composition
 
-| | v1.0 |
+| | v1.0 (v1.0.1 has the same rows) |
 |---|---|
 | labelled pairs | 62,497 (26,149 matches, 36,348 non-matches) |
 | records | 96,642 |
-| distinct identifiers (entities) | 71,783 |
-| splits | train 31,199 / dev 6,123 / test 25,175 pairs, entity-disjoint |
+| distinct identifiers (`entity_id` values; one organization can hold several) | 71,783 |
+| splits | train 31,199 / dev 6,123 / test 25,175 pairs, disjoint by identifier |
 | fixture (bundled with the Python package) | 5,000 pairs, 9,756 records, same stratification |
 
 Pairs per identifier type:
@@ -44,6 +44,17 @@ words removed: matches are hard below 70 (7,732 pairs), medium from 70 to 89 (5,
 (15,000). Hard matches are renames, reworded agency names, abbreviations and doing-business-as
 names; hard non-matches are different organizations with near-identical names (two towns named
 Springfield, an LLC and a corporation of the same name, fund II and fund III).
+
+**Identical names.** Every pair whose two names are identical after case and punctuation
+folding is a non-match (2,113 pairs, all but one in different states), because matches are only
+built from names that differ. See [format.md](format.md#identical-names).
+
+**Metadata that predicts the label.** `source`, `id_type`, `name_kind` and the pair columns
+(`difficulty`, `categories`, `name_sim`) follow from how pairs were generated and predict the
+label without reading a name: a lookup on `id_type` and the two sources reaches test F1 0.927,
+above every baseline. They are labels and metadata, not inputs; the allowed inputs and the
+measurements are in [metrics.md](metrics.md#allowed-inputs). Among the allowed fields, "same
+state" alone reaches F1 0.800, because the build drops same-state near-name non-matches.
 
 **Organizations only.** Sole proprietorships and person-shaped names are removed (see
 [build.md](build.md#filters)). The filter is conservative: it also drops some companies named
@@ -120,11 +131,15 @@ about identifier equality), person matching, or non-US data.
 
 ## Distribution and license
 
-Data: CC BY 4.0, https://huggingface.co/datasets/tensorust/usorg-bench (tag `v1.0`).
+Data: CC BY 4.0, https://huggingface.co/datasets/tensorust/usorg-bench (tags `v1.0` and
+`v1.0.1`; `v1.0.1` has the same rows plus one Parquet file per split, mapped to the `train`,
+`validation` and `test` splits of `datasets.load_dataset`).
 Code: MIT, https://github.com/Mattbusel/usorg-bench. The underlying US federal records are public
 domain; state registry records are public records.
 
 ## Maintenance
 
 Tensorust LLC maintains the dataset. Errors can be reported as GitHub issues with the `pair_id`.
-A new release gets a new tag; `v1.0` will not change.
+A new release gets a new tag; tags do not change. Planned for a later data release: balance
+sources and identifier types across labels so `source` and `id_type` stop predicting the label,
+and stop the same-state drop rule from making "same state" a label proxy.
